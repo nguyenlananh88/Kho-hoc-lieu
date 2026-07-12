@@ -1328,10 +1328,18 @@ async function initializeSupabase() {
       msg.includes("fetch failed") ||
       msg.includes("network") ||
       msg.includes("getaddrinfo") ||
+      msg.includes("timeout") ||
       details.includes("enotfound") ||
       details.includes("fetch failed") ||
       details.includes("getaddrinfo")
     );
+  };
+
+  const withTimeout = <T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms))
+    ]);
   };
 
   const isBrokenPlaceholder = 
@@ -1361,10 +1369,11 @@ async function initializeSupabase() {
     let testError: any = null;
 
     try {
-      const result = await supabase
-        .from("products")
-        .select("id")
-        .limit(1);
+      const result: any = await withTimeout(
+        supabase.from("products").select("id").limit(1),
+        1500,
+        "Supabase products select timed out (1500ms limit)"
+      );
       testProds = result.data;
       testError = result.error;
     } catch (e: any) {
@@ -1382,7 +1391,11 @@ async function initializeSupabase() {
         });
         
         try {
-          const retryResult = await supabase.from("products").select("id").limit(1);
+          const retryResult: any = await withTimeout(
+            supabase.from("products").select("id").limit(1),
+            1500,
+            "Supabase products select retry timed out (1500ms limit)"
+          );
           testProds = retryResult.data;
           testError = retryResult.error;
         } catch (e: any) {
@@ -1626,8 +1639,14 @@ async function ensureDbInitialized() {
 
   isDbInitializing = true;
   try {
-    console.log("[Supabase Lazy Initialization] Starting database verification and auto-seeding...");
-    await initializeSupabase();
+    console.log("[Supabase Lazy Initialization] Starting database verification and auto-seeding with global timeout limit (2500ms)...");
+    
+    const initPromise = initializeSupabase();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("Global lazy database initialization timeout (2500ms limit reached)")), 2500)
+    );
+    
+    await Promise.race([initPromise, timeoutPromise]);
     isDbInitialized = true;
     console.log("[Supabase Lazy Initialization] Complete!");
   } catch (err: any) {
@@ -1833,13 +1852,21 @@ async function deleteAdminFromDB(username: string) {
 
 // 1. Authenticate Admin
 app.post("/api/admin/login", async (req, res) => {
-  const { username, password } = req.body;
-  const admins = await fetchAdmins();
-  const found = admins.find((a: any) => a.username === username && a.password === password);
-  if (found) {
-    res.json({ success: true, token: "admin-secret-token", role: "admin" });
-  } else {
-    res.status(401).json({ success: false, error: "Tài khoản hoặc mật khẩu không đúng!" });
+  try {
+    const { username, password } = req.body;
+    const admins = await fetchAdmins();
+    const found = admins.find((a: any) => a.username === username && a.password === password);
+    if (found) {
+      res.json({ success: true, token: "admin-secret-token", role: "admin" });
+    } else {
+      res.status(401).json({ success: false, error: "Tài khoản hoặc mật khẩu không chính xác!" });
+    }
+  } catch (error: any) {
+    console.error("[Login API Error]:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Đã xảy ra lỗi hệ thống trong quá trình xử lý đăng nhập. Chi tiết: " + (error.message || error) 
+    });
   }
 });
 
