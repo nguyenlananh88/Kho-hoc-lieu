@@ -11,7 +11,6 @@ import {
 import { Product, Initiative, Order, Feedback } from "./types";
 import AdminDashboard from "./components/AdminDashboard";
 import AIPictureGame from "./components/AIPictureGame";
-import AISoanGiaoAn from "./components/AISoanGiaoAn";
 
 const getYoutubeIdFromImageOrDesc = (image: string = "", desc: string = "") => {
   if (image && image.includes("img.youtube.com")) {
@@ -1677,14 +1676,7 @@ export default function App() {
                   <span className="whitespace-nowrap">Sáng Kiến Kinh Nghiệm</span>
                 </button>
 
-                {/* Highlighted feature tool: AI Assistant */}
-                <button 
-                  onClick={() => setActiveTab("soan-giao-an-ai")}
-                  className={`px-3 lg:px-4 h-16 rounded-none text-[9px] lg:text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex flex-col items-center justify-center gap-1 cursor-pointer border-r border-white/10 relative text-white ${activeTab === "soan-giao-an-ai" ? "bg-[#1e70ff]" : "bg-transparent text-slate-100 hover:bg-[#002d8a] hover:text-white"}`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse flex-shrink-0" /> 
-                  <span className="whitespace-nowrap">Soạn Giáo Án AI</span>
-                </button>
+
 
                 {/* Admin Management System Button */}
                 {isAdmin && (
@@ -1842,23 +1834,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Smart AI Tools Promo */}
-            <div className="p-3.5 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl border border-indigo-100 space-y-2 text-left">
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />
-                <h5 className="text-[10px] font-black text-indigo-950 uppercase tracking-wider">Tiện ích AI 4.0</h5>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed font-semibold">Tự động thiết kế học liệu năng lực số chuẩn GDPT 2018 bằng Gemini.</p>
-              <button 
-                onClick={() => {
-                  setActiveTab("soan-giao-an-ai");
-                  showToast("✨ Mở trợ lý ảo soạn bài");
-                }}
-                className="w-full bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-250 font-extrabold py-2 rounded-xl text-[10px] transition-all cursor-pointer shadow-sm"
-              >
-                Lập giáo án AI ngay
-              </button>
-            </div>
+
 
           </div>
         </aside>
@@ -1935,15 +1911,6 @@ export default function App() {
               {/* Drawer footer info */}
               <div className="pt-6 border-t border-slate-100 text-xs text-slate-400 space-y-3">
                 <p>Địa chỉ kho tài nguyên học tập cấp quốc gia chuẩn số hoá.</p>
-                <button 
-                  onClick={() => {
-                    setActiveTab("soan-giao-an-ai");
-                    setShowMobileSidebar(false);
-                  }}
-                  className="w-full bg-indigo-600 text-white font-extrabold py-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
-                >
-                  <Sparkles className="w-4 h-4" /> Soạn Giáo Án AI
-                </button>
               </div>
             </div>
           </div>
@@ -2254,30 +2221,7 @@ export default function App() {
                 )}
               </section>
 
-              {/* LOWER BANNER PROMOTION FOR AI SOẠN GIÁO ÁN */}
-              <section className="p-6 sm:p-8 bg-gradient-to-r from-slate-950 to-indigo-950 text-white rounded-[32px] text-left relative overflow-hidden shadow-md border border-slate-800">
-                <div className="absolute right-0 bottom-0 w-64 h-64 bg-amber-500/10 rounded-full filter blur-3xl"></div>
-                <div className="relative z-10 max-w-2xl space-y-4">
-                  <div className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-300 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                    <Sparkles className="w-3 h-3" /> Tiện ích đột phá
-                  </div>
-                  <h3 className="text-2xl font-black leading-tight">Soạn giáo án tích hợp năng lực số bằng Gemini AI</h3>
-                  <p className="text-slate-350 text-xs sm:text-sm leading-relaxed font-semibold">
-                    Công cụ thông minh liên kết trực tiếp với máy chủ Google, xây dựng kịch bản giảng dạy theo Công văn 5512/Bộ GD&ĐT bám sát năng lực số cho tất cả môn học chỉ trong 10 giây.
-                  </p>
-                  <div>
-                    <button 
-                      onClick={() => {
-                        setActiveTab("soan-giao-an-ai");
-                        showToast("✨ Mở trợ lý AI soạn bài");
-                      }}
-                      className="bg-amber-500 hover:bg-amber-605 text-slate-950 font-black px-6 py-3 rounded-2xl text-xs transition-all shadow-lg shadow-amber-500/15 flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Sparkles className="w-4 h-4 animate-bounce" /> Thử soạn giáo án AI ngay
-                    </button>
-                  </div>
-                </div>
-              </section>
+
 
             </div>
           )}
@@ -2897,10 +2841,7 @@ export default function App() {
             </div>
           )}
 
-          {/* VIEW: SOẠN GIÁO ÁN AI (Real API express connected) */}
-          {activeTab === "soan-giao-an-ai" && (
-            <AISoanGiaoAn onShowToast={showToast} />
-          )}
+
 
           {/* VIEW: PORTAL QUẢN TRỊ ADMIN (Phân quyền kiểm duyệt chặt chẽ) */}
           {activeTab === "admin-dashboard" && (

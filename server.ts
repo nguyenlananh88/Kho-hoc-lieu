@@ -40,7 +40,12 @@ const PORT = 3000;
 // Vercel Serverless Function support middleware to preserve/prepend /api prefix
 app.use((req, res, next) => {
   // 1. If running on Vercel and rewritten, restore original path from headers
-  const originalUrlHeader = req.headers["x-original-url"] || req.headers["x-forwarded-uri"];
+  const originalUrlHeader = 
+    req.headers["x-original-url"] || 
+    req.headers["x-forwarded-uri"] || 
+    req.headers["x-vercel-forwarded-path"] || 
+    req.headers["x-forwarded-path"];
+
   if (originalUrlHeader && typeof originalUrlHeader === "string") {
     const originalUrl = req.url;
     req.url = originalUrlHeader;
@@ -1336,10 +1341,13 @@ async function initializeSupabase() {
   };
 
   const withTimeout = <T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> => {
-    return Promise.race([
-      promise,
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms))
-    ]);
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(errorMsg)), ms);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      clearTimeout(timeoutId);
+    });
   };
 
   const isBrokenPlaceholder = 
@@ -1638,13 +1646,18 @@ async function ensureDbInitialized() {
   }
 
   isDbInitializing = true;
+  let timeoutId: NodeJS.Timeout | null = null;
   try {
     console.log("[Supabase Lazy Initialization] Starting database verification and auto-seeding with global timeout limit (2500ms)...");
     
-    const initPromise = initializeSupabase();
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error("Global lazy database initialization timeout (2500ms limit reached)")), 2500)
-    );
+    // Catch and swallow any late background errors from initializeSupabase so they don't cause unhandled rejections
+    const initPromise = initializeSupabase().catch(err => {
+      console.warn("[Supabase Lazy Initialization Background Error]:", err.message || err);
+    });
+
+    const timeoutPromise = new Promise<void>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error("Global lazy database initialization timeout (2500ms limit reached)")), 2500);
+    });
     
     await Promise.race([initPromise, timeoutPromise]);
     isDbInitialized = true;
@@ -1653,6 +1666,9 @@ async function ensureDbInitialized() {
     console.error("[Supabase Lazy Initialization] Critical error during init:", err.message || err);
     useSupabaseFallback = true;
   } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
     isDbInitializing = false;
   }
 }
