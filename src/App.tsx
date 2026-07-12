@@ -462,30 +462,6 @@ export default function App() {
       const res = await fetch("/api/products");
       if (res.ok) {
         const serverData = await res.json();
-        
-        // Load local backup from browser's local storage
-        const fallbackStr = localStorage.getItem("backup_products");
-        if (fallbackStr) {
-          try {
-            const backedUpProds: Product[] = JSON.parse(fallbackStr);
-            const serverIds = new Set(serverData.map((item: any) => item.id));
-            const merged = [...serverData];
-            
-            // Add any locally saved products that aren't present in the backend database
-            backedUpProds.forEach((backedUpItem) => {
-              if (backedUpItem && backedUpItem.id && !serverIds.has(backedUpItem.id)) {
-                merged.unshift(backedUpItem);
-              }
-            });
-            
-            setProducts(merged);
-            localStorage.setItem("backup_products", JSON.stringify(merged));
-            return;
-          } catch (e) {
-            console.error("Local sync error for products:", e);
-          }
-        }
-        
         setProducts(serverData);
         localStorage.setItem("backup_products", JSON.stringify(serverData));
       } else {
@@ -515,30 +491,6 @@ export default function App() {
       const res = await fetch("/api/initiatives");
       if (res.ok) {
         const serverData = await res.json();
-        
-        // Load local backup from browser's local storage
-        const fallbackStr = localStorage.getItem("backup_initiatives");
-        if (fallbackStr) {
-          try {
-            const backedUpInits: Initiative[] = JSON.parse(fallbackStr);
-            const serverIds = new Set(serverData.map((item: any) => item.id));
-            const merged = [...serverData];
-            
-            // Add any locally saved initiatives that aren't present in the backend database
-            backedUpInits.forEach((backedUpItem) => {
-              if (backedUpItem && backedUpItem.id && !serverIds.has(backedUpItem.id)) {
-                merged.unshift(backedUpItem);
-              }
-            });
-            
-            setInitiatives(merged);
-            localStorage.setItem("backup_initiatives", JSON.stringify(merged));
-            return;
-          } catch (e) {
-            console.error("Local sync error:", e);
-          }
-        }
-        
         setInitiatives(serverData);
         localStorage.setItem("backup_initiatives", JSON.stringify(serverData));
       } else {
@@ -568,30 +520,6 @@ export default function App() {
       const res = await fetch("/api/games");
       if (res.ok) {
         const serverData = await res.json();
-        
-        // Load local backup from browser's local storage
-        const fallbackStr = localStorage.getItem("backup_games");
-        if (fallbackStr) {
-          try {
-            const backedUpGames: any[] = JSON.parse(fallbackStr);
-            const serverIds = new Set(serverData.map((item: any) => item.id));
-            const merged = [...serverData];
-            
-            // Add any locally saved games that aren't present in the backend database
-            backedUpGames.forEach((backedUpItem) => {
-              if (backedUpItem && backedUpItem.id && !serverIds.has(backedUpItem.id)) {
-                merged.unshift(backedUpItem);
-              }
-            });
-            
-            setGames(merged);
-            localStorage.setItem("backup_games", JSON.stringify(merged));
-            return;
-          } catch (e) {
-            console.error("Local games sync error:", e);
-          }
-        }
-        
         setGames(serverData);
         localStorage.setItem("backup_games", JSON.stringify(serverData));
       } else {
@@ -620,30 +548,6 @@ export default function App() {
       const res = await fetch("/api/subjects");
       if (res.ok) {
         const serverData = await res.json();
-        
-        // Load local backup from browser's local storage
-        const fallbackStr = localStorage.getItem("backup_subjects");
-        if (fallbackStr) {
-          try {
-            const backedUpSubjects: string[] = JSON.parse(fallbackStr);
-            const serverSet = new Set(serverData);
-            const merged = [...serverData];
-            
-            // Add any locally saved subjects that aren't present in the backend database
-            backedUpSubjects.forEach((sub) => {
-              if (sub && !serverSet.has(sub)) {
-                merged.push(sub);
-              }
-            });
-            
-            setSubjects(merged);
-            localStorage.setItem("backup_subjects", JSON.stringify(merged));
-            return;
-          } catch (e) {
-            console.error("Local subjects sync error:", e);
-          }
-        }
-        
         setSubjects(serverData);
         localStorage.setItem("backup_subjects", JSON.stringify(serverData));
       } else {
@@ -1047,6 +951,7 @@ export default function App() {
   const [initImage, setInitImage] = useState("");
   const [initFileData, setInitFileData] = useState("");
   const [initFileName, setInitFileName] = useState("");
+  const [initTag, setInitTag] = useState("new");
 
   const [showGameForm, setShowGameForm] = useState(false);
   const [gameFormMode, setGameFormMode] = useState<"create" | "edit">("create");
@@ -1128,6 +1033,7 @@ export default function App() {
     setInitImage("");
     setInitFileData("");
     setInitFileName("");
+    setInitTag("new");
     setSelectedInitId(null);
     setShowInitForm(true);
   };
@@ -1142,6 +1048,7 @@ export default function App() {
     setInitImage((item as any).image || "");
     setInitFileData((item as any).fileData || "");
     setInitFileName((item as any).fileName || "");
+    setInitTag((item as any).tag || "none");
     setSelectedInitId(item.id);
     setShowInitForm(true);
   };
@@ -1150,7 +1057,7 @@ export default function App() {
     setGameFormMode("create");
     setGameCategory("Bậc THCS");
     setGameTitle("");
-    setGameTag("");
+    setGameTag("new");
     setGameDesc("");
     setGameImage("");
     setGameFileData("");
@@ -1166,7 +1073,7 @@ export default function App() {
     setGameFormMode("edit");
     setGameCategory(item.category || "Bậc THCS");
     setGameTitle(item.title);
-    setGameTag(item.tag || "");
+    setGameTag(item.tag || "none");
     setGameDesc(item.desc || "");
     setGameImage(item.image || "");
     setGameFileData(item.fileData || "");
@@ -1288,7 +1195,8 @@ export default function App() {
       price: Number(initPrice),
       image: initImage,
       fileData: initFileData,
-      fileName: initFileName
+      fileName: initFileName,
+      tag: initTag
     };
 
     try {
@@ -2552,9 +2460,26 @@ export default function App() {
                               </span>
 
                               {/* Highlight badge tag */}
-                              <span className="absolute bottom-1.5 left-1.5 bg-purple-600 text-white text-[7.5px] sm:text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none">
-                                <Brain className="w-2 h-2 fill-white" /> {g.tag || "Mới"}
-                              </span>
+                              {g.tag === "best-seller" && (
+                                <span className="absolute bottom-1.5 left-1.5 bg-red-600 text-white text-[7.5px] sm:text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none">
+                                  <Flame className="w-2 h-2 fill-white" /> Bán chạy
+                                </span>
+                              )}
+                              {g.tag === "free" && (
+                                <span className="absolute bottom-1.5 left-1.5 bg-emerald-600 text-white text-[7.5px] sm:text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none">
+                                  <Gift className="w-2 h-2 fill-white" /> Miễn phí
+                                </span>
+                              )}
+                              {g.tag === "new" && (
+                                <span className="absolute bottom-1.5 left-1.5 bg-blue-600 text-white text-[7.5px] sm:text-[8px] font-custom uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none font-bold">
+                                  Mới
+                                </span>
+                              )}
+                              {g.tag && g.tag !== "none" && g.tag !== "new" && g.tag !== "best-seller" && g.tag !== "free" && (
+                                <span className="absolute bottom-1.5 left-1.5 bg-purple-600 text-white text-[7.5px] sm:text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none">
+                                  <Brain className="w-2 h-2 fill-white" /> {g.tag}
+                                </span>
+                              )}
                             </div>
 
                             {/* Content Area */}
@@ -2937,7 +2862,7 @@ export default function App() {
                           isAdmin={isAdmin}
                           onAddToCart={addToCart} 
                           onOpenDetail={setSelectedDetailProduct}
-                          onDelete={loadInitiatives}
+                          onDelete={handleDeleteInit}
                           onEdit={openEditInit}
                           onDownload={triggerDownload}
                         />
@@ -2959,7 +2884,7 @@ export default function App() {
                           isAdmin={isAdmin}
                           onAddToCart={addToCart} 
                           onOpenDetail={setSelectedDetailProduct}
-                          onDelete={loadInitiatives}
+                          onDelete={handleDeleteInit}
                           onEdit={openEditInit}
                           onDownload={triggerDownload}
                         />
@@ -4608,41 +4533,108 @@ WHERE id = '${finalId}';`;
                 />
               </div>
 
-              <div className="space-y-1.5 p-3.5 bg-purple-50/55 rounded-2xl border border-purple-100/50">
-                <span className="text-[11px] font-black text-purple-700 uppercase flex items-center gap-1">
-                  📁 Đính kèm tệp gửi sáng kiến (.pdf/.doc/.zip) từ máy tính
-                </span>
-                <input
-                  type="file"
-                  accept=".doc,.docx,.pdf,.zip"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setInitFileName(file.name);
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        if (event.target?.result) {
-                          setInitFileData(event.target.result as string);
-                          showToast(`✓ Đã nhận kịch bản tài liệu: ${file.name}`);
-                        }
-                      };
-                      reader.readAsDataURL(file);
+              <div className="space-y-1">
+                <label className="text-xs font-black text-slate-500 uppercase">Nhãn nổi bật sáng kiến</label>
+                <select
+                  value={initTag}
+                  onChange={(e) => setInitTag(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="new">Mới cập nhật</option>
+                  <option value="best-seller">Bán chạy nhất (Best seller)</option>
+                  <option value="free">Miễn phí phân phối</option>
+                  <option value="none">Không thêm nhãn</option>
+                </select>
+              </div>
 
-                      setInitDesc((prev) => {
-                        const marker = "[Tập tin đính kèm:";
-                        if (prev.includes(marker)) {
-                          return prev.replace(/\[Tập tin đính kèm:[^\]]+\]/, `[Tập tin đính kèm: ${file.name}]`);
+              {/* Document File uploading or URL attachment for Initiative */}
+              <div className="space-y-3.5 border border-purple-100 p-4 rounded-2xl bg-purple-50/20">
+                <span className="text-xs font-black text-purple-700 uppercase block mb-1">📁 ĐÍNH KÈM TỆP GỬI SÁNG KIẾN (.PDF/.DOC/.ZIP)</span>
+                <p className="text-[10px] text-purple-500 leading-normal font-semibold mb-2">Thầy cô có thể tải lên tệp tin trực tiếp từ máy tính hoặc dán đường dẫn tải trực tiếp (Drive, Dropbox, OneDrive...).</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Way 1: Upload from computer */}
+                  <div className="space-y-1 bg-white/50 p-2.5 rounded-xl border border-purple-100/60">
+                    <span className="text-[10px] text-purple-755 font-black block mb-1">👉 CÁCH 1: TẢI TỪ MÁY TÍNH</span>
+                    {initFileName && (initFileData && initFileData.startsWith("data:")) ? (
+                      <div className="bg-white p-2 rounded-xl border border-purple-100 flex items-center justify-between text-[11px] gap-1 shadow-sm">
+                        <span className="font-extrabold text-slate-800 line-clamp-1 max-w-[120px]" title={initFileName}>📄 {initFileName}</span>
+                        <button 
+                          type="button" 
+                          onClick={() => { setInitFileData(""); setInitFileName(""); }}
+                          className="text-red-500 hover:text-red-700 font-bold text-[10px] shrink-0"
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                    ) : (
+                      <input
+                        type="file"
+                        accept=".doc,.docx,.pdf,.zip"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setInitFileName(file.name);
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              if (event.target?.result) {
+                                setInitFileData(event.target.result as string);
+                                showToast(`✓ Đã nhận kịch bản tài liệu: ${file.name}`);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+
+                            setInitDesc((prev) => {
+                              const marker = "[Tập tin đính kèm:";
+                              if (prev.includes(marker)) {
+                                return prev.replace(/\[Tập tin đính kèm:[^\]]+\]/, `[Tập tin đính kèm: ${file.name}]`);
+                              }
+                              return prev + ` [Tập tin đính kèm: ${file.name}]`;
+                            });
+                          }
+                        }}
+                        className="w-full text-[10px] font-semibold text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
+                      />
+                    )}
+                  </div>
+
+                  {/* Way 2: Paste link */}
+                  <div className="space-y-1 bg-white/50 p-2.5 rounded-xl border border-purple-100/60">
+                    <span className="text-[10px] text-purple-755 font-black block mb-1">👉 CÁCH 2: DÁN LIÊN KẾT TẢI TỆP</span>
+                    <input
+                      type="text"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-800 placeholder-slate-400"
+                      placeholder="https://drive.google.com/..."
+                      value={(initFileData && !initFileData.startsWith("data:")) ? initFileData : ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setInitFileData(val);
+                        if (val) {
+                          try {
+                            const urlObj = new URL(val);
+                            const pathName = urlObj.pathname;
+                            const lastPart = pathName.substring(pathName.lastIndexOf("/") + 1);
+                            if (lastPart && lastPart.includes(".")) {
+                              setInitFileName(lastPart);
+                            } else {
+                              setInitFileName("sang_kien_dinh_kem.zip");
+                            }
+                          } catch {
+                            setInitFileName("sang_kien_dinh_kem.zip");
+                          }
+                        } else {
+                          setInitFileName("");
                         }
-                        return prev + ` [Tập tin đính kèm: ${file.name}]`;
-                      });
-                    }
-                  }}
-                  className="w-full text-xs font-semibold text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
-                />
+                      }}
+                    />
+                  </div>
+                </div>
+
                 {initFileName && (
-                  <p className="text-[10px] text-purple-700 font-bold italic">
-                    Đang đính kèm: {initFileName}
-                  </p>
+                  <div className="bg-emerald-50 text-emerald-850 p-2 rounded-xl text-[11px] font-bold border border-emerald-100 flex items-center gap-1.5">
+                    <span>✓ Đã liên kết tài nguyên gốc: </span>
+                    <span className="underline font-extrabold">{initFileName}</span>
+                  </div>
                 )}
               </div>
 
@@ -4793,35 +4785,86 @@ WHERE id = '${finalId}';`;
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-black text-slate-500 uppercase">Thành phần nhãn hiệu (Tag)</label>
-                <input
-                  type="text"
-                  required
+                <label className="text-xs font-black text-slate-500 uppercase">Nhãn nổi bật trò chơi</label>
+                <select
                   value={gameTag}
                   onChange={(e) => setGameTag(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="VD: Trắc nghiệm rẽ nhánh, Logic vui..."
-                />
+                >
+                  <option value="new">Mới cập nhật</option>
+                  <option value="best-seller">Bán chạy nhất (Best seller)</option>
+                  <option value="free">Miễn phí phân phối</option>
+                  <option value="none">Không thêm nhãn</option>
+                </select>
               </div>
 
-              <div className="space-y-1.5 p-3.5 bg-emerald-50/55 rounded-2xl border border-emerald-100/50">
-                <span className="text-[11px] font-black text-emerald-700 uppercase flex items-center gap-1">
-                  <Download className="w-3.5 h-3.5 animate-pulse" /> 📁 Đính kèm tài liệu tệp game (.ZIP/.PDF/.DOC/.HTML)
-                </span>
-                <p className="text-[9.5px] text-emerald-600 font-semibold leading-relaxed">
-                  Tải lên học liệu kịch bản trò chơi dạng nén (.zip), tài liệu (.pdf, .doc) hoặc tệp ứng dụng web (.html) để học sinh và giáo viên tải về trực tiếp.
-                </p>
+              {/* Document File uploading or URL attachment for Game */}
+              <div className="space-y-3.5 border border-emerald-100 p-4 rounded-2xl bg-emerald-50/20">
+                <span className="text-xs font-black text-emerald-700 uppercase block mb-1">📁 ĐÍNH KÈM TỆP TRÒ CHƠI (.ZIP/.PDF/.DOC/.HTML)</span>
+                <p className="text-[10px] text-emerald-500 leading-normal font-semibold mb-2">Thầy cô có thể tải lên tệp tin trực tiếp từ máy tính hoặc dán đường dẫn tải trực tiếp (Drive, Dropbox, OneDrive...).</p>
                 
-                <input
-                  type="file"
-                  accept=".doc,.docx,.pdf,.zip,.rar,.html,.htm"
-                  onChange={handleGameDocumentFileChange}
-                  className="w-full text-xs font-semibold text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200 cursor-pointer"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Way 1: Upload from computer */}
+                  <div className="space-y-1 bg-white/50 p-2.5 rounded-xl border border-emerald-100/60">
+                    <span className="text-[10px] text-emerald-755 font-black block mb-1">👉 CÁCH 1: TẢI TỪ MÁY TÍNH</span>
+                    {gameFileName && (gameFileData && gameFileData.startsWith("data:")) ? (
+                      <div className="bg-white p-2 rounded-xl border border-emerald-100 flex items-center justify-between text-[11px] gap-1 shadow-sm">
+                        <span className="font-extrabold text-slate-800 line-clamp-1 max-w-[120px]" title={gameFileName}>📄 {gameFileName}</span>
+                        <button 
+                          type="button" 
+                          onClick={() => { setGameFileData(""); setGameFileName(""); }}
+                          className="text-red-500 hover:text-red-700 font-bold text-[10px] shrink-0"
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                    ) : (
+                      <input
+                        type="file"
+                        accept=".doc,.docx,.pdf,.zip,.rar,.html,.htm"
+                        onChange={handleGameDocumentFileChange}
+                        className="w-full text-xs font-semibold text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200 cursor-pointer"
+                      />
+                    )}
+                  </div>
+
+                  {/* Way 2: Paste link */}
+                  <div className="space-y-1 bg-white/50 p-2.5 rounded-xl border border-emerald-100/60">
+                    <span className="text-[10px] text-emerald-755 font-black block mb-1">👉 CÁCH 2: DÁN LIÊN KẾT TẢI TỆP</span>
+                    <input
+                      type="text"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 placeholder-slate-400"
+                      placeholder="https://drive.google.com/..."
+                      value={(gameFileData && !gameFileData.startsWith("data:")) ? gameFileData : ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setGameFileData(val);
+                        if (val) {
+                          try {
+                            const urlObj = new URL(val);
+                            const pathName = urlObj.pathname;
+                            const lastPart = pathName.substring(pathName.lastIndexOf("/") + 1);
+                            if (lastPart && lastPart.includes(".")) {
+                              setGameFileName(lastPart);
+                            } else {
+                              setGameFileName("tro_choi_dinh_kem.zip");
+                            }
+                          } catch {
+                            setGameFileName("tro_choi_dinh_kem.zip");
+                          }
+                        } else {
+                          setGameFileName("");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
                 {gameFileName && (
-                  <p className="text-[10px] text-emerald-700 font-bold italic">
-                    Đang đính kèm: {gameFileName}
-                  </p>
+                  <div className="bg-emerald-50 text-emerald-850 p-2 rounded-xl text-[11px] font-bold border border-emerald-100 flex items-center gap-1.5">
+                    <span>✓ Đã liên kết tài nguyên gốc: </span>
+                    <span className="underline font-extrabold">{gameFileName}</span>
+                  </div>
                 )}
               </div>
 
@@ -5498,7 +5541,7 @@ function InitiativeCard({ item, isAdmin, onAddToCart, onOpenDetail, onDelete, on
   isAdmin: boolean;
   onAddToCart: (item: any) => void;
   onOpenDetail: (item: any) => void;
-  onDelete: () => void;
+  onDelete: (id: string) => void;
   onEdit: (item: any) => void;
   onDownload?: (item: any) => void;
   key?: any;
@@ -5514,33 +5557,6 @@ function InitiativeCard({ item, isAdmin, onAddToCart, onOpenDetail, onDelete, on
   };
 
   const isFree = item.price === 0 || (item as any).isFree === true || (item as any).is_free === true || String((item as any).is_free) === "true";
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const handleDeleteConfirm = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const res = await fetch(`/api/admin/initiatives/${item.id}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer admin-secret-token` }
-      });
-      if (res.ok) {
-        // Evict from browser localStorage cache to prevent restored merge
-        const localBackupStr = localStorage.getItem("backup_initiatives");
-        if (localBackupStr) {
-          try {
-            const localBackup = JSON.parse(localBackupStr);
-            const filteredBackup = localBackup.filter((bi: any) => bi.id !== item.id);
-            localStorage.setItem("backup_initiatives", JSON.stringify(filteredBackup));
-          } catch (_) {}
-        }
-        onDelete();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setShowConfirm(false);
-    }
-  };
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -5554,34 +5570,6 @@ function InitiativeCard({ item, isAdmin, onAddToCart, onOpenDetail, onDelete, on
       onClick={() => onOpenDetail(mappedProduct)}
       className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-lg hover:border-indigo-100 hover:scale-[1.015] transition-all duration-350 text-left cursor-pointer group relative"
     >
-      {/* Inline Confirmation Overlay */}
-      {showConfirm && (
-        <div 
-          className="absolute inset-0 bg-slate-950/95 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-3 text-center rounded-2xl animate-fade-in"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="bg-red-500/10 p-2 rounded-full mb-1">
-            <Trash className="w-5 h-5 text-red-500" />
-          </div>
-          <p className="text-white text-[11px] font-extrabold leading-tight mb-3">
-            Xác nhận xóa sáng kiến này?
-          </p>
-          <div className="flex gap-2 w-full justify-center">
-            <button
-              onClick={() => setShowConfirm(false)}
-              className="px-2.5 py-1 text-[9px] font-black bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all cursor-pointer"
-            >
-              Hủy
-            </button>
-            <button
-              onClick={handleDeleteConfirm}
-              className="px-2.5 py-1 text-[9px] font-black bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all cursor-pointer"
-            >
-              Xác nhận
-            </button>
-          </div>
-        </div>
-      )}
       
       {/* Admin quick Edit / Delete floating panel */}
       {isAdmin && (
@@ -5594,7 +5582,7 @@ function InitiativeCard({ item, isAdmin, onAddToCart, onOpenDetail, onDelete, on
             <Edit2 className="w-3 h-3" />
           </button>
           <button
-            onClick={() => setShowConfirm(true)}
+            onClick={() => onDelete(item.id)}
             className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-full shadow-lg transition-all transform hover:scale-110 active:scale-95 cursor-pointer flex items-center justify-center"
             title="Xóa sáng kiến (Admin)"
           >
@@ -5619,6 +5607,23 @@ function InitiativeCard({ item, isAdmin, onAddToCart, onOpenDetail, onDelete, on
         <span className="absolute top-1.5 right-1.5 bg-amber-500/90 backdrop-blur-sm text-white text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-full select-none">
           Sáng kiến
         </span>
+
+        {/* Highlight badge tag */}
+        {item.tag === "best-seller" && (
+          <span className="absolute bottom-1.5 left-1.5 bg-red-600 text-white text-[7.5px] sm:text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none">
+            <Flame className="w-2 h-2 fill-white" /> Bán chạy
+          </span>
+        )}
+        {item.tag === "free" && (
+          <span className="absolute bottom-1.5 left-1.5 bg-emerald-600 text-white text-[7.5px] sm:text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none">
+            <Gift className="w-2 h-2 fill-white" /> Miễn phí
+          </span>
+        )}
+        {item.tag === "new" && (
+          <span className="absolute bottom-1.5 left-1.5 bg-blue-600 text-white text-[7.5px] sm:text-[8px] font-custom uppercase tracking-widest px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm leading-none font-bold">
+            Mới
+          </span>
+        )}
       </div>
 
       <div className="p-3 sm:p-3.5 flex-grow flex flex-col justify-between space-y-2">

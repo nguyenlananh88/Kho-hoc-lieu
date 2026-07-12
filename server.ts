@@ -39,6 +39,24 @@ const PORT = 3000;
 
 // Vercel Serverless Function support middleware to preserve/prepend /api prefix
 app.use((req, res, next) => {
+  // 1. If running on Vercel and rewritten, restore original path from headers
+  const originalUrlHeader = req.headers["x-original-url"] || req.headers["x-forwarded-uri"];
+  if (originalUrlHeader && typeof originalUrlHeader === "string") {
+    const originalUrl = req.url;
+    req.url = originalUrlHeader;
+    console.log(`[Vercel Routing Restored] Original URL restored from headers: ${originalUrl} -> ${req.url}`);
+  } else {
+    const matchedPath = req.headers["x-matched-path"];
+    if (matchedPath && typeof matchedPath === "string" && !matchedPath.startsWith("/api/index")) {
+      const originalUrl = req.url;
+      const queryIndex = originalUrl.indexOf("?");
+      const queryString = queryIndex !== -1 ? originalUrl.substring(queryIndex) : "";
+      req.url = matchedPath + queryString;
+      console.log(`[Vercel Routing Restored] Original URL restored from matched-path: ${originalUrl} -> ${req.url}`);
+    }
+  }
+
+  // 2. Fallback check for prefix matching if not rewritten but missing /api
   if ((process.env.NODE_ENV === "production" || process.env.VERCEL) && req.url) {
     const apiRoutes = [
       "/admin",
@@ -74,19 +92,25 @@ import { createClient } from "@supabase/supabase-js";
 // Supabase Configuration
 let SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://rbxxhsvmzxbzicebebkg.supabase.co";
 
-let SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieHhoc3ZtenhiemljZWJlYmtnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Mzc3ODk0MSwiZXhwIjoyMDk5MzU0OTQxfQ._I3wNvRbwsqR7_h4ZI1cDtzgFED-6vgxkOVFr3OGlXs";
+let SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieHhoc3ZtenhiemljZWJlYmtnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Mzc3ODk0MSwiZXhwIjoyMDk5MzU0OTQxfQ._I3wNvRbwsqR7_h4ZI1cDtzgFED-6vgxkOVFr3OGlXs";
 
 if (SUPABASE_URL.includes("rbxxhsvmzxbzicebebkg")) {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_KEY && !process.env.SUPABASE_ANON_KEY) {
     SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieHhoc3ZtenhiemljZWJlYmtnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Mzc3ODk0MSwiZXhwIjoyMDk5MzU0OTQxfQ._I3wNvRbwsqR7_h4ZI1cDtzgFED-6vgxkOVFr3OGlXs";
   }
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    persistSession: false
-  }
-});
+let supabase: any;
+try {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: false
+    }
+  });
+} catch (e: any) {
+  console.error("[Supabase] Failed to initialize Supabase client on module load:", e.message || e);
+  supabase = null;
+}
 
 let useSupabaseFallback = false;
 const failedSupabaseTables = new Set<string>();
@@ -506,7 +530,13 @@ const mapInitiativeFromDB = (i: any) => {
   let finalImage = i.image || "";
   let finalFileName = i.fileName || "";
   let finalFileData = i.fileData || "";
+  let finalTag = i.tag || "none";
   
+  if (finalDesc.includes(" __TAG__:")) {
+    const parts = finalDesc.split(" __TAG__:");
+    finalDesc = parts[0];
+    finalTag = parts[1] || "none";
+  }
   if (finalDesc.includes(" __FILE_DATA__:")) {
     const parts = finalDesc.split(" __FILE_DATA__:");
     finalDesc = parts[0];
@@ -537,12 +567,16 @@ const mapInitiativeFromDB = (i: any) => {
     downloads: i.downloads,
     image: finalImage,
     fileName: finalFileName,
-    fileData: finalFileData
+    fileData: finalFileData,
+    tag: finalTag
   };
 };
 
 const mapInitiativeToDB = (i: any) => {
   let dbDesc = i.desc || "";
+  if (dbDesc.includes(" __TAG__:")) {
+    dbDesc = dbDesc.split(" __TAG__:")[0];
+  }
   if (dbDesc.includes(" __IMG_DATA__:")) {
     dbDesc = dbDesc.split(" __IMG_DATA__:")[0];
   }
@@ -561,6 +595,9 @@ const mapInitiativeToDB = (i: any) => {
   }
   if (i.fileData && i.fileData !== "") {
     dbDesc += ` __FILE_DATA__:${i.fileData}`;
+  }
+  if (i.tag && i.tag !== "" && i.tag !== "none") {
+    dbDesc += ` __TAG__:${i.tag}`;
   }
 
   const dbInit: any = {
@@ -768,16 +805,17 @@ async function updateProduct(id: string, updates: any) {
 }
 
 async function deleteProduct(id: string) {
+  let deletedData: any = null;
+
   if (SUPABASE_URL && SUPABASE_KEY && !useSupabaseFallback) {
     try {
       const { data, error } = await supabase
         .from("products")
         .delete()
         .eq("id", id)
-        .select()
-        .single();
-      if (!error && data) {
-        return mapProductFromDB(data);
+        .select();
+      if (!error && data && data.length > 0) {
+        deletedData = mapProductFromDB(data[0]);
       }
       if (error) {
         handleSupabaseError(error);
@@ -789,15 +827,18 @@ async function deleteProduct(id: string) {
     }
   }
 
-  // Local Json Fallback
+  // Always keep Local JSON Fallback in sync
   const localProducts = readData(PRODUCTS_FILE, INITIAL_PRODUCTS);
   const index = localProducts.findIndex((p: any) => p.id === id);
   if (index !== -1) {
     const deleted = localProducts.splice(index, 1);
     writeData(PRODUCTS_FILE, localProducts);
-    return deleted[0];
+    if (!deletedData) {
+      deletedData = deleted[0];
+    }
   }
-  return null;
+
+  return deletedData || { id };
 }
 
 // Database Access Layer (Initiatives)
@@ -949,16 +990,17 @@ async function updateInitiative(id: string, updates: any) {
 }
 
 async function deleteInitiative(id: string) {
+  let deletedData: any = null;
+
   if (SUPABASE_URL && SUPABASE_KEY && !useSupabaseFallback) {
     try {
       const { data, error } = await supabase
         .from("initiatives")
         .delete()
         .eq("id", id)
-        .select()
-        .single();
-      if (!error && data) {
-        return mapInitiativeFromDB(data);
+        .select();
+      if (!error && data && data.length > 0) {
+        deletedData = mapInitiativeFromDB(data[0]);
       }
       if (error) {
         handleSupabaseError(error);
@@ -970,15 +1012,18 @@ async function deleteInitiative(id: string) {
     }
   }
 
-  // Local Json Fallback
+  // Always keep Local JSON Fallback in sync
   const localInits = readData(INITIATIVES_FILE, INITIAL_INITIATIVES);
   const index = localInits.findIndex((i: any) => i.id === id);
   if (index !== -1) {
     const deleted = localInits.splice(index, 1);
     writeData(INITIATIVES_FILE, localInits);
-    return deleted[0];
+    if (!deletedData) {
+      deletedData = deleted[0];
+    }
   }
-  return null;
+
+  return deletedData || { id };
 }
 
 // Database Access Layer (Orders)
@@ -1236,16 +1281,17 @@ async function updateGame(id: string, updates: any) {
 }
 
 async function deleteGame(id: string) {
+  let deletedData: any = null;
+
   if (SUPABASE_URL && SUPABASE_KEY && !useSupabaseFallback && !failedSupabaseTables.has("games")) {
     try {
       const { data, error } = await supabase
         .from("games")
         .delete()
         .eq("id", id)
-        .select()
-        .single();
-      if (!error && data) {
-        return data;
+        .select();
+      if (!error && data && data.length > 0) {
+        deletedData = data[0];
       }
       if (error) {
         handleSupabaseError(error, "games");
@@ -1257,19 +1303,50 @@ async function deleteGame(id: string) {
     }
   }
 
-  // Local Json Fallback
+  // Always keep Local JSON Fallback in sync
   const localGames = readData(GAMES_FILE, INITIAL_GAMES);
   const index = localGames.findIndex((g: any) => g.id === id);
   if (index !== -1) {
     const deleted = localGames.splice(index, 1);
     writeData(GAMES_FILE, localGames);
-    return deleted[0];
+    if (!deletedData) {
+      deletedData = deleted[0];
+    }
   }
-  return null;
+
+  return deletedData || { id };
 }
 
 // Automatic Seeder & Database Connection Initializer
 async function initializeSupabase() {
+  const isConnectionError = (err: any): boolean => {
+    if (!err) return false;
+    const msg = (err.message || String(err)).toLowerCase();
+    const details = (err.details || "").toLowerCase();
+    return (
+      msg.includes("enotfound") ||
+      msg.includes("fetch failed") ||
+      msg.includes("network") ||
+      msg.includes("getaddrinfo") ||
+      details.includes("enotfound") ||
+      details.includes("fetch failed") ||
+      details.includes("getaddrinfo")
+    );
+  };
+
+  const isBrokenPlaceholder = 
+    SUPABASE_URL.includes("ndqnclzvlbodtjlmgcdz") || 
+    SUPABASE_URL.includes("mjuwgdknrajqqaquarfl");
+
+  if (isBrokenPlaceholder) {
+    console.warn(`[Supabase Warning] Phát hiện cấu hình URL chứa giá trị giả định (${SUPABASE_URL}). Tự động phục hồi sang cơ sở dữ liệu đám mây ổn định.`);
+    SUPABASE_URL = "https://rbxxhsvmzxbzicebebkg.supabase.co";
+    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieHhoc3ZtenhiemljZWJlYmtnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Mzc3ODk0MSwiZXhwIjoyMDk5MzU0OTQxfQ._I3wNvRbwsqR7_h4ZI1cDtzgFED-6vgxkOVFr3OGlXs";
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false }
+    });
+  }
+
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.warn("[Supabase] Configuration is empty. Automatically falling back to local files database.");
     useSupabaseFallback = true;
@@ -1277,16 +1354,45 @@ async function initializeSupabase() {
   }
 
   try {
-    console.log("[Supabase] Testing schema connection...");
+    console.log("[Supabase] Testing schema connection to:", SUPABASE_URL);
     
     // Check if the 'products' relation exists
-    const { data: testProds, error: testError } = await supabase
-      .from("products")
-      .select("id")
-      .limit(1);
+    let testProds: any[] | null = null;
+    let testError: any = null;
+
+    try {
+      const result = await supabase
+        .from("products")
+        .select("id")
+        .limit(1);
+      testProds = result.data;
+      testError = result.error;
+    } catch (e: any) {
+      testError = e;
+    }
+
+    if (testError && isConnectionError(testError)) {
+      console.warn("[Supabase Connection Error] Không thể kết nối đến máy chủ Supabase:", testError.message || testError);
+      if (SUPABASE_URL !== "https://rbxxhsvmzxbzicebebkg.supabase.co") {
+        console.warn("[Supabase Dynamic Failover] Đang tự động thử kết nối sang cơ sở dữ liệu đám mây dự phòng chính thức (rbxxhsvmzxbzicebebkg)...");
+        SUPABASE_URL = "https://rbxxhsvmzxbzicebebkg.supabase.co";
+        SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJieHhoc3ZtenhiemljZWJlYmtnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Mzc3ODk0MSwiZXhwIjoyMDk5MzU0OTQxfQ._I3wNvRbwsqR7_h4ZI1cDtzgFED-6vgxkOVFr3OGlXs";
+        supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+          auth: { persistSession: false }
+        });
+        
+        try {
+          const retryResult = await supabase.from("products").select("id").limit(1);
+          testProds = retryResult.data;
+          testError = retryResult.error;
+        } catch (e: any) {
+          testError = e;
+        }
+      }
+    }
 
     if (testError) {
-      console.warn("[Supabase] Connection warning or tables are not created yet:", testError.message);
+      console.warn("[Supabase] Connection warning or tables are not created yet:", testError.message || testError);
       console.warn("[Supabase] Local JSON file fallback will be active active until tables are created.");
       useSupabaseFallback = true;
       return;
@@ -1499,7 +1605,61 @@ async function initializeSupabase() {
 }
 
 // Run DB Auto-Init
-initializeSupabase();
+// Lazy initialization state to prevent blocking serverless cold start on Vercel
+let isDbInitialized = false;
+let isDbInitializing = false;
+
+async function ensureDbInitialized() {
+  if (isDbInitialized || useSupabaseFallback) return;
+  if (!supabase) {
+    console.warn("[Supabase] Client not initialized. Falling back locally.");
+    useSupabaseFallback = true;
+    return;
+  }
+  if (isDbInitializing) {
+    // Wait for ongoing initialization
+    while (isDbInitializing) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return;
+  }
+
+  isDbInitializing = true;
+  try {
+    console.log("[Supabase Lazy Initialization] Starting database verification and auto-seeding...");
+    await initializeSupabase();
+    isDbInitialized = true;
+    console.log("[Supabase Lazy Initialization] Complete!");
+  } catch (err: any) {
+    console.error("[Supabase Lazy Initialization] Critical error during init:", err.message || err);
+    useSupabaseFallback = true;
+  } finally {
+    isDbInitializing = false;
+  }
+}
+
+// Lazy initialization middleware for API routes
+const lazyInitDb = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    await ensureDbInitialized();
+  } catch (err) {
+    console.error("[DB Lazy Init Middleware Error]:", err);
+  }
+  next();
+};
+
+// Apply lazy database initialization middleware on all /api routes
+app.use("/api", lazyInitDb);
+
+// We skip running initializeSupabase() at module load time on Vercel to avoid cold start timeouts.
+// In non-Vercel environment, we can pre-warm the database connection, but lazyInitDb also acts as safety.
+if (!process.env.VERCEL) {
+  ensureDbInitialized().catch(err => {
+    console.error("[Supabase Pre-warm Error]:", err);
+  });
+} else {
+  console.log("[Supabase] Running on Vercel: skipped top-level database check. DB will be initialized lazily on the first request.");
+}
 
 // Admin Auth Middleware
 const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -1570,7 +1730,28 @@ app.get("/api/db-status", async (req, res) => {
                        bannerSettingsCheck.exists &&
                        bankSettingsCheck.exists;
       
-      if (allExist) {
+      // Check if any check failed due to network / DNS
+      let connectionError: string | null = null;
+      const allChecks = [
+        productsCheck, initiativesCheck, ordersCheck, feedbacksCheck, 
+        gamesCheck, subjectsCheck, adminAccountsCheck, bannerSettingsCheck, bankSettingsCheck
+      ];
+      for (const check of allChecks) {
+        if (!check.exists && check.error) {
+          const errMsg = check.error.toLowerCase();
+          if (errMsg.includes("enotfound") || errMsg.includes("fetch failed") || errMsg.includes("getaddrinfo")) {
+            connectionError = check.error;
+            break;
+          }
+        }
+      }
+
+      if (connectionError) {
+        status.connected = false;
+        status.fallback = true;
+        status.error = connectionError;
+        status.message = `LỖI KẾT NỐI VẬT LÝ: Không thể phân giải DNS hoặc kết nối đến máy chủ Supabase (${SUPABASE_URL}). Hệ thống đang dùng dữ liệu dự phòng cục bộ (local JSON).`;
+      } else if (allExist) {
         if (useSupabaseFallback) {
           console.log("[Supabase] Live diagnostic recovery: All tables are verified as existing and accessible. Disabling local fallback.");
           useSupabaseFallback = false;
@@ -1835,7 +2016,8 @@ app.post("/api/admin/initiatives", requireAdmin, async (req, res) => {
     downloads: 0,
     image: req.body.image || "",
     fileName: req.body.fileName || "",
-    fileData: req.body.fileData || ""
+    fileData: req.body.fileData || "",
+    tag: req.body.tag || "none"
   };
   const saved = await insertInitiative(newInit);
   res.status(201).json(saved);
@@ -2379,6 +2561,13 @@ app.post("/api/gemini/analyze-image", async (req, res) => {
     console.error("Gemini Image Analysis Error:", error);
     res.status(500).json({ error: "Không thể phân tích ảnh trực tuyến. Lỗi: " + (error.message || error) });
   }
+});
+
+
+// Fallback handler for unmatched API routes to prevent falling through to static/Vite handler
+app.all("/api/*", (req, res) => {
+  console.log(`[API 404 Fallback] Unmatched request: ${req.method} ${req.url}`);
+  res.status(404).json({ error: `Đường dẫn API không khả dụng hoặc chưa được hỗ trợ: ${req.method} ${req.url}` });
 });
 
 

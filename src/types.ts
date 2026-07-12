@@ -26,6 +26,9 @@ export interface Initiative {
   sales: number;
   downloads: number;
   image?: string;
+  tag?: string;
+  fileData?: string;
+  fileName?: string;
 }
 
 export interface Order {

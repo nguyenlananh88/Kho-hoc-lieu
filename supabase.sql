@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
   author TEXT NOT NULL,
   "desc" TEXT, -- desc is a SQL keyword, quoting avoids syntax conflicts
   image TEXT,
+  tag TEXT DEFAULT 'new', -- Feature: Highlight badge (new, best-seller, free, none)
   price INTEGER DEFAULT 0,
   sales INTEGER DEFAULT 0,
   downloads INTEGER DEFAULT 0,
