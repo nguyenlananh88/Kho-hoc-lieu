@@ -5,7 +5,7 @@ import {
   ChevronRight, Flame, Clock, Gift, User, Star, BookMarked, RefreshCw, 
   Send, HelpCircle, Layout, BookOpenCheck, ChevronDown, Info, CheckCircle, 
   Lock, Heart, Shield, Landmark, Copy, QrCode, LogOut, Edit2, UploadCloud, Link, Image, Key, AlertCircle,
-  Home, Gamepad2
+  Home, Gamepad2, Code2, Save, FileCode, Play, Terminal, ExternalLink, Maximize2
 } from "lucide-react";
 
 import { Product, Initiative, Order, Feedback } from "./types";
@@ -25,6 +25,17 @@ const getYoutubeIdFromImageOrDesc = (image: string = "", desc: string = "") => {
   if (matchDesc && matchDesc[2] && matchDesc[2].length === 11) return matchDesc[2];
   
   return null;
+};
+
+const utf8ToBase64 = (str: string): string => {
+  try {
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+      return String.fromCharCode(parseInt(p1, 16));
+    }));
+  } catch (e) {
+    console.error("utf8ToBase64 error:", e);
+    return btoa(str);
+  }
 };
 
 export default function App() {
@@ -120,6 +131,12 @@ export default function App() {
   // States for Interactive Game (Quick Quiz)
   const [gameStep, setGameStep] = useState("intro"); // intro, playing, finished
   const [currentGameId, setCurrentGameId] = useState("");
+  
+  // States for HTML Game Live Code Editor
+  const [isEditingHtml, setIsEditingHtml] = useState(false);
+  const [editingHtmlContent, setEditingHtmlContent] = useState("");
+  const [previewHtmlContent, setPreviewHtmlContent] = useState("");
+  const [savingHtml, setSavingHtml] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -1493,6 +1510,42 @@ export default function App() {
     setQuizScore(0);
     setSelectedAnswer(null);
     setQuizAnswers([]);
+    
+    // Setup HTML live editing content
+    const selectedGame = games.find(g => g.id === gameId);
+    if (selectedGame && selectedGame.fileData) {
+      try {
+        const fileData = selectedGame.fileData;
+        let decoded = "";
+        if (fileData.startsWith("data:")) {
+          const commaIdx = fileData.indexOf(",");
+          if (commaIdx !== -1) {
+            const base64Str = fileData.substring(commaIdx + 1);
+            const binaryStr = atob(base64Str);
+            const len = binaryStr.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryStr.charCodeAt(i);
+            }
+            decoded = new TextDecoder("utf-8").decode(bytes);
+          } else {
+            decoded = fileData;
+          }
+        } else {
+          decoded = fileData;
+        }
+        setEditingHtmlContent(decoded);
+        setPreviewHtmlContent(decoded);
+      } catch (e) {
+        console.error("Lỗi giải mã HTML game:", e);
+        setEditingHtmlContent("");
+        setPreviewHtmlContent("");
+      }
+    } else {
+      setEditingHtmlContent("");
+      setPreviewHtmlContent("");
+    }
+    setIsEditingHtml(false);
   };
 
   const handleSelectAnswer = (optionIdx: number) => {
@@ -2518,10 +2571,99 @@ export default function App() {
                 const isHtmlGame = gameObj && gameObj.fileName && (gameObj.fileName.toLowerCase().endsWith(".html") || gameObj.fileName.toLowerCase().endsWith(".htm"));
 
                 if (isHtmlGame) {
+                  const saveGameContent = async () => {
+                    const updatedFileData = "data:text/html;base64," + utf8ToBase64(editingHtmlContent);
+                    
+                    // Update in-memory state
+                    const updatedGames = games.map(g => {
+                      if (g.id === currentGameId) {
+                        return { ...g, fileData: updatedFileData };
+                      }
+                      return g;
+                    });
+                    setGames(updatedGames);
+                    
+                    // Update localStorage backup
+                    const localBackupStr = localStorage.getItem("backup_games");
+                    let localBackupList: any[] = [];
+                    if (localBackupStr) {
+                      try {
+                        localBackupList = JSON.parse(localBackupStr);
+                      } catch (_) {}
+                    }
+                    const idx = localBackupList.findIndex(item => item.id === currentGameId);
+                    if (idx !== -1) {
+                      localBackupList[idx] = { ...localBackupList[idx], fileData: updatedFileData };
+                    } else {
+                      const gameItem = games.find(g => g.id === currentGameId);
+                      if (gameItem) {
+                        localBackupList.unshift({ ...gameItem, fileData: updatedFileData });
+                      }
+                    }
+                    localStorage.setItem("backup_games", JSON.stringify(localBackupList));
+
+                    if (isAdmin) {
+                      try {
+                        setSavingHtml(true);
+                        const payload = {
+                          ...gameObj,
+                          fileData: updatedFileData
+                        };
+                        const res = await fetch(`/api/admin/games/${currentGameId}`, {
+                          method: "PUT",
+                          headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer admin-secret-token`
+                          },
+                          body: JSON.stringify(payload)
+                        });
+                        if (res.ok) {
+                          showToast("💾 Đã đồng bộ và lưu vĩnh viễn trò chơi lên máy chủ!");
+                        } else {
+                          showToast("💾 Đã lưu cục bộ (Lỗi đồng bộ máy chủ)");
+                        }
+                      } catch (err) {
+                        showToast("💾 Đã lưu cục bộ (Lỗi kết nối máy chủ)");
+                      } finally {
+                        setSavingHtml(false);
+                      }
+                    } else {
+                      showToast("💾 Đã lưu trò chơi vào bộ nhớ trình duyệt!");
+                    }
+                  };
+
+                  const handleOpenNewTab = () => {
+                    try {
+                      const blob = new Blob([previewHtmlContent], { type: "text/html;charset=utf-8" });
+                      const blobUrl = URL.createObjectURL(blob);
+                      const newWin = window.open(blobUrl, "_blank");
+                      if (!newWin) {
+                        showToast("⚠️ Trình duyệt chặn Popup. Vui lòng cho phép mở cửa sổ bật lên để chơi game tab riêng.");
+                      }
+                    } catch (err) {
+                      console.error("Lỗi khi mở tab mới:", err);
+                      showToast("⚠️ Không thể mở tab riêng.");
+                    }
+                  };
+
+                  const handleFullScreen = () => {
+                    const iframe = document.getElementById("html-game-iframe") as HTMLIFrameElement;
+                    if (iframe) {
+                      if (iframe.requestFullscreen) {
+                        iframe.requestFullscreen();
+                      } else if ((iframe as any).webkitRequestFullscreen) { /* Safari */
+                        (iframe as any).webkitRequestFullscreen();
+                      } else if ((iframe as any).msRequestFullscreen) { /* IE11 */
+                        (iframe as any).msRequestFullscreen();
+                      }
+                    }
+                  };
+
                   return (
-                    <div className="space-y-4 max-w-5xl mx-auto text-left animate-scale-up">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                        <div className="space-y-0.5">
+                    <div className="space-y-4 max-w-7xl mx-auto text-left animate-scale-up">
+                      {/* Header controls with extra Edit Options */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm">
+                        <div className="space-y-1">
                           <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
                             <Sparkles className="w-5 h-5 text-purple-600 animate-pulse" />
                             {gameObj.title}
@@ -2535,14 +2677,50 @@ export default function App() {
                                 Premium: {Number(gameObj.salePrice || gameObj.price || 0).toLocaleString('vi-VN')}đ
                               </span>
                             ) : (
-                              <span className="bg-emerald-105 text-emerald-800 text-[9px] font-extrabold px-2.5 py-0.5 rounded-md uppercase font-black">
+                              <span className="bg-emerald-100 text-emerald-800 text-[9px] font-extrabold px-2.5 py-0.5 rounded-md uppercase font-black">
                                 Miễn phí
                               </span>
                             )}
                             <p className="text-xs text-slate-400 font-semibold">{gameObj.tag || "Mô hình Trải nghiệm"}</p>
                           </div>
                         </div>
+                        
                         <div className="flex flex-wrap items-center gap-2">
+                          {/* Live Edit Mode Switch Button */}
+                          <button
+                            onClick={() => {
+                              if (!isEditingHtml) {
+                                setEditingHtmlContent(previewHtmlContent);
+                              }
+                              setIsEditingHtml(!isEditingHtml);
+                            }}
+                            className={`text-xs font-bold px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1 border shadow-sm ${
+                              isEditingHtml 
+                                ? "text-purple-800 bg-purple-50 hover:bg-purple-100 border-purple-200" 
+                                : "text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border-indigo-200"
+                            }`}
+                          >
+                            <Code2 className="w-3.5 h-3.5" />
+                            {isEditingHtml ? "Đóng trình sửa mã" : "Chỉnh sửa HTML trực tiếp"}
+                          </button>
+
+                          {/* Authentic Full Experience Buttons requested by user */}
+                          <button
+                            onClick={handleOpenNewTab}
+                            className="text-xs font-bold text-sky-800 bg-sky-50 hover:bg-sky-100 px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-sky-200 shadow-sm"
+                            title="Mở trò chơi trong một cửa sổ riêng biệt để có trải nghiệm thực tế 100% và giữ nguyên toàn bộ cấu trúc"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" /> Trải nghiệm Tab riêng 🌐
+                          </button>
+
+                          <button
+                            onClick={handleFullScreen}
+                            className="text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-teal-200 shadow-sm"
+                            title="Phóng to toàn bộ màn hình trò chơi"
+                          >
+                            <Maximize2 className="w-3.5 h-3.5" /> Toàn màn hình 🖥️
+                          </button>
+
                           <button
                             onClick={() => {
                               const iframe = document.getElementById("html-game-iframe") as HTMLIFrameElement;
@@ -2552,11 +2730,13 @@ export default function App() {
                             }}
                             className="text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1 border border-slate-200"
                           >
-                            <RefreshCw className="w-3.5 h-3.5" /> Chơi lại
+                            <RefreshCw className="w-3.5 h-3.5" /> Tải lại game
                           </button>
+                          
                           {gameObj.fileData && (
                             <button
                               onClick={() => {
+                                const updatedFileData = "data:text/html;base64," + utf8ToBase64(previewHtmlContent);
                                 if (gameObj.isPaid) {
                                   const mappedProduct = {
                                     ...gameObj,
@@ -2571,11 +2751,16 @@ export default function App() {
                                     rating: 5.0,
                                     image: gameObj.image || "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=60",
                                     fileName: gameObj.fileName,
-                                    fileData: gameObj.fileData
+                                    fileData: updatedFileData
                                   };
                                   setSelectedDetailProduct(mappedProduct);
                                 } else {
-                                  triggerDownload(gameObj);
+                                  const link = document.createElement("a");
+                                  link.href = updatedFileData;
+                                  link.download = gameObj.fileName || "game.html";
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
                                 }
                               }}
                               className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1 border border-emerald-200"
@@ -2583,67 +2768,114 @@ export default function App() {
                               <Download className="w-3.5 h-3.5" /> Tải về máy (.HTML)
                             </button>
                           )}
+                          
                           <button 
-                            onClick={() => setGameStep("intro")}
-                            className="text-xs font-black text-white bg-red-500 hover:bg-red-650 px-4 py-2 rounded-xl transition-all cursor-pointer shadow-md shadow-red-200"
+                            onClick={() => {
+                              setIsEditingHtml(false);
+                              setGameStep("intro");
+                            }}
+                            className="text-xs font-black text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-all cursor-pointer shadow-md shadow-red-200"
                           >
                             Thoát Trò chơi
                           </button>
                         </div>
                       </div>
 
-                      {/* Interactive sandbox iframe */}
-                      <div className="bg-slate-950 p-2 sm:p-4 rounded-[32px] border border-slate-800 shadow-2xl overflow-hidden relative">
-                        <div className="absolute top-4 left-6 flex gap-1.5 z-10">
-                          <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                          <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                        </div>
-                        <div className="h-8 bg-slate-950 rounded-t-xl mb-1 flex items-center justify-center">
-                          <span className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">{gameObj.fileName}</span>
-                        </div>
-                        <div className="bg-white rounded-2xl overflow-hidden relative min-h-[550px] shadow-inner">
-                          {gameObj.fileData ? (
-                            <iframe
-                              id="html-game-iframe"
-                              srcDoc={(() => {
-                                try {
-                                  const fileData = gameObj.fileData;
-                                  if (fileData.startsWith("data:")) {
-                                    const commaIdx = fileData.indexOf(",");
-                                    if (commaIdx !== -1) {
-                                      const base64Str = fileData.substring(commaIdx + 1);
-                                      const binaryStr = atob(base64Str);
-                                      const len = binaryStr.length;
-                                      const bytes = new Uint8Array(len);
-                                      for (let i = 0; i < len; i++) {
-                                        bytes[i] = binaryStr.charCodeAt(i);
-                                      }
-                                      return new TextDecoder("utf-8").decode(bytes);
-                                    }
-                                  }
-                                  return fileData;
-                                } catch (e) {
-                                  console.error("Lỗi giải mã HTML:", e);
-                                  return `<p style="padding:24px; font-family:sans-serif; text-align:center; color:#ef4444; font-weight:bold;">Không thể giải mã tệp HTML này. Vui lòng kiểm tra lại định dạng tệp.</p>`;
-                                }
-                              })()}
-                              className="w-full min-h-[600px] border-0"
-                              sandbox="allow-scripts allow-same-origin allow-modals allow-downloads allow-popups"
-                              title="Hệ thống Trải nghiệm Trực tuyến HTML Game"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <div className="p-16 text-center text-slate-400">
-                              Trò chơi này chưa được cấu hình tệp HTML nguồn.
+                      {/* Main Sandbox Container */}
+                      <div className={`grid grid-cols-1 ${isEditingHtml ? "lg:grid-cols-12" : "grid-cols-1"} gap-4`}>
+                        {/* Editor Column - Only shows when editing mode is enabled */}
+                        {isEditingHtml && (
+                          <div className="lg:col-span-6 flex flex-col space-y-3 bg-slate-900 border border-slate-800 rounded-[28px] p-5 shadow-xl animate-slide-in">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-slate-200">
+                                <Terminal className="w-4 h-4 text-purple-400" />
+                                <span className="font-mono text-xs font-bold uppercase tracking-wider text-purple-300">Trình biên tập HTML Game</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono">Bảo lưu toàn vẹn cấu trúc file</span>
                             </div>
-                          )}
+
+                            <div className="relative flex-grow flex flex-col">
+                              <textarea
+                                value={editingHtmlContent}
+                                onChange={(e) => setEditingHtmlContent(e.target.value)}
+                                className="w-full h-[500px] lg:h-[600px] font-mono text-xs p-4 bg-slate-950 text-emerald-400 border border-slate-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-500 overflow-y-auto resize-none leading-relaxed"
+                                placeholder="Nhập mã nguồn HTML trò chơi tại đây..."
+                                spellCheck="false"
+                              />
+                            </div>
+
+                            {/* Editor control buttons */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                              <button
+                                onClick={() => {
+                                  setPreviewHtmlContent(editingHtmlContent);
+                                  showToast("⚡ Đã cập nhật bản thử nghiệm trò chơi!");
+                                }}
+                                className="text-xs font-black text-slate-900 bg-amber-400 hover:bg-amber-500 px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-amber-900/10"
+                              >
+                                <Play className="w-3.5 h-3.5" /> Chạy xem thử ⚡
+                              </button>
+
+                              <button
+                                onClick={saveGameContent}
+                                disabled={savingHtml}
+                                className="text-xs font-black text-white bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800/50 px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-purple-900/10"
+                              >
+                                {savingHtml ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang lưu...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Save className="w-3.5 h-3.5" /> Lưu trò chơi 💾
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Interactive Preview Frame Column */}
+                        <div className={`${isEditingHtml ? "lg:col-span-6" : "w-full"} bg-slate-950 p-2 sm:p-4 rounded-[32px] border border-slate-800 shadow-2xl overflow-hidden relative flex flex-col`}>
+                          <div className="absolute top-4 left-6 flex gap-1.5 z-10">
+                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          </div>
+                          
+                          <div className="h-8 bg-slate-950 rounded-t-xl mb-1 flex items-center justify-center">
+                            <span className="text-[10px] text-slate-500 font-mono tracking-widest uppercase flex items-center gap-1.5">
+                              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                              {gameObj.fileName || "LIVE_SANDBOX.html"}
+                            </span>
+                          </div>
+
+                          {/* Removed restriction of "sandbox" attribute completely to provide 100% authentic, unrestricted user experience of HTML layout, CSS, scripts and storage */}
+                          <div className="bg-white rounded-2xl overflow-hidden relative h-[580px] lg:h-[680px] flex-grow shadow-inner">
+                            {previewHtmlContent ? (
+                              <iframe
+                                id="html-game-iframe"
+                                srcDoc={previewHtmlContent}
+                                className="w-full h-full border-0"
+                                title="Hệ thống Trải nghiệm Trực tuyến HTML Game"
+                                referrerPolicy="no-referrer"
+                                allowFullScreen
+                              />
+                            ) : (
+                              <div className="p-16 text-center text-slate-400">
+                                Trò chơi này chưa được cấu hình tệp HTML nguồn.
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                       
-                      <div className="bg-amber-50 border border-amber-200/60 p-4 rounded-2xl">
-                        <p className="text-amber-800 text-xs font-semibold leading-relaxed">
-                          💡 <strong>Hướng dẫn vận hành:</strong> Đây là trò chơi tương tác đổi mới sáng tạo do giáo viên thiết kế thông qua trí tuệ nhân tạo (AI). Bạn có thể thử nghiệm, click chuột để chơi trực tiếp trên trình duyệt. Nhấn <strong>Tải về máy (.HTML)</strong> để lưu giữ kịch bản mã nguồn trò chơi về máy tính cá nhân hoàn toàn miễn phí.
+                      <div className="bg-indigo-50/50 border border-indigo-100 p-5 rounded-[24px]">
+                        <p className="text-indigo-950 text-xs font-semibold leading-relaxed">
+                          💡 <strong>Trải nghiệm thực tế tối đa:</strong> Để có trải nghiệm mượt mà, đầy đủ tính năng và giữ nguyên vẹn 100% cấu trúc trò chơi của thầy cô:
+                          <br />• Hãy click nút <strong>Trải nghiệm Tab riêng 🌐</strong> để chơi thử trên một cửa sổ trình duyệt độc lập. Cách này giúp trò chơi thừa hưởng đầy đủ kích cỡ màn hình thực tế, âm thanh và lưu trữ cục bộ tốt nhất.
+                          <br />• Hoặc nhấn <strong>Toàn màn hình 🖥️</strong> để phóng to khung game tại chỗ.
+                          <br />• Mọi chỉnh sửa của thầy cô tại **Trình biên tập HTML Game** sẽ được cập nhật trực quan tức thì khi click <strong>Chạy xem thử ⚡</strong>.
                         </p>
                       </div>
                     </div>
